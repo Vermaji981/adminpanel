@@ -3,36 +3,36 @@ const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
 dotenv.config();
+mongoose.set("bufferCommands", false);
+
+let connectionPromise;
 
 const connectDB = async () => {
-  try {
-    const connStr = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/deshboardadminpanel";
-    console.log(`Connecting to MongoDB at: ${connStr}...`);
-
-    await mongoose.connect(connStr, {
-      serverSelectionTimeoutMS: 3000
-    });
-
-    console.log("MongoDB Connected Successfully to Local Database!");
-    await autoSeedAdmin();
-
-  } catch (error) {
-    console.log("Local MongoDB service not reachable:", error.message);
-    console.log("Starting automatic In-Memory MongoDB Fallback Server...");
-
-    try {
-      const { MongoMemoryServer } = require("mongodb-memory-server");
-      const mongoServer = await MongoMemoryServer.create();
-      const mongoUri = mongoServer.getUri();
-
-      await mongoose.connect(mongoUri);
-      console.log(`Fallback In-Memory MongoDB Connected at: ${mongoUri}`);
-
-      await autoSeedAdmin();
-    } catch (memError) {
-      console.error("Failed to start Fallback MongoDB:", memError.message);
-    }
+  if (mongoose.connection.readyState === 1) {
+    return;
   }
+
+  const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+
+  if (!mongoUri) {
+    throw new Error("MONGODB_URI is not configured");
+  }
+
+  if (!connectionPromise) {
+    connectionPromise = mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000
+    }).then(async () => {
+      console.log("MongoDB Atlas connected successfully");
+      await autoSeedAdmin();
+    }).catch((error) => {
+      connectionPromise = undefined;
+      console.error("MongoDB Atlas connection failed:", error.message);
+      throw error;
+    });
+  }
+
+  await connectionPromise;
 };
 
 const autoSeedAdmin = async () => {
